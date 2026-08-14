@@ -12,4 +12,8 @@ nonisolated enum HandsFreeTuning {
     static let stuckStateTimeout: TimeInterval = 30
     /// 強制復帰の判定間隔
     static let stuckStateCheckInterval: TimeInterval = 5
+    /// マイクを開く直前に置く、急かされている印象を避けるための短い間（呼吸1回分程度）
+    static let listeningEntryPause: TimeInterval = 0.45
+    /// ハンズフリー会話中、この秒数以上まったく発話がない場合はセッションを終える
+    static let conversationInactivityTimeout: TimeInterval = 45
 }

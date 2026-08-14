@@ -173,7 +173,8 @@ struct MemoryView: View {
     MemoryView(memoryStore: MemoryStore(llmService: OrcaRouterService()))
 }
 
-#Preview("サンプルデータあり") {
+#if DEBUG
+private func makeSampleMemoryStore() -> MemoryStore {
     let store = MemoryStore(llmService: OrcaRouterService())
     let now = Date()
     store.debugSetTopics([
@@ -192,5 +193,10 @@ struct MemoryView: View {
             relatedSummaries: ["応援しているチームがあると話していた"]
         )
     ])
-    return MemoryView(memoryStore: store)
+    return store
 }
+
+#Preview("サンプルデータあり") {
+    MemoryView(memoryStore: makeSampleMemoryStore())
+}
+#endif

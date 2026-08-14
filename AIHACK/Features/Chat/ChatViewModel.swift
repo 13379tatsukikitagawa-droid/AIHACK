@@ -61,6 +61,14 @@ final class ChatViewModel {
     /// 直近の発話1回分の韻律特徴量。finalTranscriptの直前に届くため、commitTranscript()の
     /// タイミングで読み取り、消費後はnilに戻す。
     private var pendingVoiceSignals: VoiceSignals?
+    /// 直近に有意な音量を検知した時刻。無音区間の自動送信判定、および音声モードの
+    /// 長時間無音タイムアウト判定の両方から参照する（consumeRecognition内でのみ更新）。
+    private var lastSoundDetectedAt = Date()
+    /// 音声モード（ハンズフリーセッション）終了時に、次にidleへ到達したタイミングで
+    /// 締めの一言を再生すべきかどうか。
+    private var pendingFarewell = false
+    /// listening状態が続いているのに一定時間まったく発話がない場合、セッションを終える監視タスク。
+    private var inactivityWatchdogTask: Task<Void, Never>?
 
     init(
         llmService: LLMServiceProtocol = OrcaRouterService(),
@@ -140,11 +148,15 @@ final class ChatViewModel {
         conversationState = newState
         sessionLog.recordStateTransition(newState)
         scheduleStuckStateWatchdog(for: newState)
+        updateInactivityWatchdog(for: newState)
 
         if newState == .error {
             isHandsFreeActive = false
         } else if newState == .idle, isHandsFreeActive {
             startListening()
+        } else if newState == .idle, pendingFarewell {
+            pendingFarewell = false
+            playFarewell()
         }
     }
 
@@ -180,6 +192,48 @@ final class ChatViewModel {
                 }
             }
         }
+    }
+
+    /// listening状態のあいだだけ有効な、長時間無音の監視。stuckStateWatchdogと同じポーリング方式を用い、
+    /// 発話が検知されるたびにconsumeRecognition側でlastSoundDetectedAtが更新される前提で判定する。
+    private func updateInactivityWatchdog(for state: ConversationState) {
+        guard state == .listening, isHandsFreeActive else {
+            cancelInactivityWatchdog()
+            return
+        }
+        scheduleInactivityWatchdog()
+    }
+
+    private func scheduleInactivityWatchdog() {
+        inactivityWatchdogTask?.cancel()
+        lastSoundDetectedAt = Date()
+
+        inactivityWatchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(HandsFreeTuning.stuckStateCheckInterval))
+                guard !Task.isCancelled, let self else { return }
+                guard self.conversationState == .listening, self.isHandsFreeActive else { return }
+
+                let idleFor = Date().timeIntervalSince(self.lastSoundDetectedAt)
+                if idleFor >= HandsFreeTuning.conversationInactivityTimeout {
+                    Self.logger.info("""
+                    \(idleFor, format: .fixed(precision: 1), privacy: .public)秒間発話がなかったため、\
+                    音声モードを終えます
+                    """)
+                    self.endHandsFreeSessionDueToInactivity()
+                    return
+                }
+            }
+        }
+    }
+
+    private func cancelInactivityWatchdog() {
+        inactivityWatchdogTask?.cancel()
+        inactivityWatchdogTask = nil
+    }
+
+    private func endHandsFreeSessionDueToInactivity() {
+        stopHandsFreeSession()
     }
 
     private func forceRecoverFromStuckState() {
@@ -486,17 +540,43 @@ final class ChatViewModel {
         }
     }
 
+    /// ハンズフリーセッションを開始する。すぐにlistening状態へ入るのではなく、まず固定の迎えの一言を
+    /// LLMを介さず即座に再生し（待たせないことを優先）、その再生完了に伴う.idleへの遷移をきっかけに
+    /// setConversationState側の既存ロジックが自然にstartListening()へつなげる。
     private func startHandsFreeSession() {
+        errorMessage = nil
+        retryNotice = nil
+        isMicPermissionDenied = false
+        pendingFarewell = false
+        if conversationState == .error {
+            setConversationState(.idle)
+        }
         isHandsFreeActive = true
-        startListening()
+        playVoiceModeGreeting()
+    }
+
+    private func playVoiceModeGreeting() {
+        ensureAudioSessionConfigured()
+        let isFirstTime = VoiceModeIntroductionState.markEnteredAndReturnWasFirstTime()
+        speechSynthesisService.enqueue(VoiceModeGreeting.greeting(isFirstTime: isFirstTime))
     }
 
     /// ハンズフリーセッションを終了する。直前の発話が認識できていれば、それは送信された上で終了する
     /// （commitTranscript側で isHandsFreeActive の値を見て再待ち受けするかどうかを判断するため、
     /// ここで先にfalseにしておくことで「この発話を最後に終了する」動作になる）。
-    private func stopHandsFreeSession() {
+    /// playsFarewellがtrueの場合、次にidleへ到達したタイミングで締めの一言を再生する
+    /// （バックグラウンド遷移による強制終了時など、TTS再生が適さない場合はfalseを渡す）。
+    private func stopHandsFreeSession(playsFarewell: Bool = true) {
         isHandsFreeActive = false
+        if playsFarewell {
+            pendingFarewell = true
+        }
         stopListening()
+    }
+
+    private func playFarewell() {
+        ensureAudioSessionConfigured()
+        speechSynthesisService.enqueue(VoiceModeGreeting.farewell)
     }
 
     private func startListening() {
@@ -521,6 +601,11 @@ final class ChatViewModel {
             }
 
             self.isMicPermissionDenied = false
+
+            // 急かされている印象を避けるため、マイクを開く前にごく短い間（呼吸1回分程度）を置く。
+            try? await Task.sleep(for: .seconds(HandsFreeTuning.listeningEntryPause))
+            guard !Task.isCancelled, self.isMicEnabled, self.conversationState != .listening else { return }
+
             self.setConversationState(.listening)
             self.listeningTask = Task { await self.consumeRecognition() }
         }
@@ -538,7 +623,8 @@ final class ChatViewModel {
     private func consumeRecognition() async {
         // 無音区間の検出用。発話が一度も検出されないまま無音が続くだけでは確定させない
         // （liveTranscriptが空のうちは判定しない）ため、開始時刻をそのまま基準にしておいてよい。
-        var lastSoundDetectedAt = Date()
+        // lastSoundDetectedAtはプロパティ（音声モードの長時間無音タイムアウト監視と共有するため）。
+        lastSoundDetectedAt = Date()
         var hasTriggeredAutoCommit = false
 
         do {
@@ -679,7 +765,8 @@ final class ChatViewModel {
                     self.stopCameraTracking()
                 }
                 if self.isHandsFreeActive {
-                    self.stopHandsFreeSession()
+                    // バックグラウンド遷移による強制終了ではTTS再生が適さないため、締めの一言は再生しない。
+                    self.stopHandsFreeSession(playsFarewell: false)
                 }
             }
         }

@@ -15,6 +15,9 @@ struct AvatarView: View {
     let lastSpeechPulseAt: Date?
     /// カメラが有効かつ顔検出時の笑顔レベル(0...1)。無効時は0を渡す。
     let smileLevel: Float
+    /// 音声モード（ハンズフリーセッション）中、部屋の照明を落とすような落ち着いたトーンにするかどうか。
+    /// trueの間、既存のradial gradientの彩度をわずかに下げる。会話の状態遷移そのものには影響しない。
+    let isCalmMode: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -40,6 +43,8 @@ struct AvatarView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
+        .saturation(isCalmMode ? 0.85 : 1.0)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: isCalmMode)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("AIアバター")
         .accessibilityValue(state.displayLabel)
@@ -100,8 +105,11 @@ struct AvatarView: View {
         case .listening:
             let level = Double(min(max(audioLevel, 0), 1))
             let jitter = sin(angle * 3 + now * 4) * baseRadius * 0.02 * level
+            // 無音時でも完全に静止させず、相槌のようなごく小さな揺れを常時残すことで
+            // 「聞いている」気配を伝える。周期をjitterとずらし、単調な脈動に見えないようにする。
+            let presenceRipple = sin(angle * 1.7 - now * 0.9) * baseRadius * 0.015
             let pulse = level * baseRadius * 0.12
-            return baseRadius + breath * 0.6 + pulse + jitter + smileBoost
+            return baseRadius + breath * 0.6 + pulse + jitter + presenceRipple + smileBoost
 
         case .thinking:
             let wave = sin(angle * 3 - now * 1.8) * baseRadius * 0.08
@@ -136,6 +144,6 @@ struct AvatarView: View {
 }
 
 #Preview {
-    AvatarView(state: .speaking, audioLevel: 0.4, lastSpeechPulseAt: Date(), smileLevel: 0.3)
+    AvatarView(state: .speaking, audioLevel: 0.4, lastSpeechPulseAt: Date(), smileLevel: 0.3, isCalmMode: false)
         .padding(40)
 }

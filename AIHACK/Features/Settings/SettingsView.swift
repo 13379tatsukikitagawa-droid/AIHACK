@@ -155,13 +155,16 @@ struct SettingsView: View {
                 TTSPreference.voice = voice
             } label: {
                 HStack(spacing: Spacing.sm) {
+                    Image(systemName: "waveform")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20)
                     Text(voice.label)
                         .font(Typography.body)
                         .foregroundStyle(.primary)
                     Spacer(minLength: Spacing.sm)
                     if isSelected {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(Theme.Palette.accent)
                     }
                 }
                 .contentShape(Rectangle())
@@ -234,7 +237,7 @@ struct SettingsView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
         .accessibilityElement(children: .combine)
     }
 
@@ -256,7 +259,7 @@ struct SettingsView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 
     private func voiceRow(_ voice: VoiceOption) -> some View {
@@ -268,18 +271,21 @@ struct SettingsView: View {
                 VoicePreference.save(voice.identifier)
             } label: {
                 HStack(spacing: Spacing.sm) {
+                    Image(systemName: "waveform")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(voice.name)
                             .font(Typography.body)
                             .foregroundStyle(.primary)
                         Text(voice.qualityTier.label)
                             .font(Typography.caption)
-                            .foregroundStyle(voice.qualityTier == .standard ? Color.secondary : Color.accentColor)
+                            .foregroundStyle(voice.qualityTier == .standard ? Color.secondary : Theme.Palette.accent)
                     }
                     Spacer(minLength: Spacing.sm)
                     if isSelected {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(Theme.Palette.accent)
                     }
                 }
                 .contentShape(Rectangle())

@@ -13,8 +13,10 @@ struct ChatView: View {
     @State private var showingAnalysis = false
     @State private var showingSettings = false
     @State private var showingMemory = false
+    @State private var showingGame = false
     @State private var analysisInitialTab: AnalysisTab = .conversation
     @State private var displayMode: ChatDisplayMode = .avatar
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,9 @@ struct ChatView: View {
                     transcriptModeBody
                 }
             }
+            .safeAreaInset(edge: .top) {
+                gameEntryBanner
+            }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: Spacing.sm) {
                     handsFreeIndicator
@@ -34,24 +39,24 @@ struct ChatView: View {
                 .padding(.top, Spacing.sm)
                 .background(.bar)
             }
-            .background(Color(.systemBackground))
+            .background(calmBackground)
             .navigationTitle("AIHACK")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     displayModeToggleButton
-                    analysisButton
-                    hypothesisButton
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    cameraToggleButton
-                    memoryButton
-                    settingsButton
+                ToolbarItem(placement: .topBarTrailing) {
+                    moreMenu
                 }
             }
         }
         .onChange(of: viewModel.conversationState) { _, newState in
             UIAccessibility.post(notification: .announcement, argument: newState.displayLabel)
+        }
+        .onChange(of: viewModel.isHandsFreeActive) { _, isActive in
+            let message = isActive ? "音声モードに入りました。まもなくAIが話しかけます。" : "音声モードを終了しました。"
+            UIAccessibility.post(notification: .announcement, argument: message)
         }
         .onChange(of: showingFaceDebug) { _, isPresented in
             // 確認画面はカメラ動作状態の「ビューア」に過ぎない。初回表示時のみ開始のきっかけを与え、
@@ -77,6 +82,46 @@ struct ChatView: View {
         .sheet(isPresented: $showingMemory) {
             MemoryView(memoryStore: viewModel.memoryStore)
         }
+        .fullScreenCover(isPresented: $showingGame) {
+            GameView()
+        }
+    }
+
+    /// Mirrorの静かな世界観から意図的に区別された、ゲームコーナー（はぁって言うゲーム／
+    /// 30秒プレゼン）への入口。色（GamePalette）はゲームモードのポップさを保つためあえて
+    /// 変更しないが、配置は1本の帯に留め、Mirror本体を圧迫しないようにする。
+    private var gameEntryBanner: some View {
+        Button {
+            showingGame = true
+        } label: {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "theatermasks.fill")
+                    .font(.system(size: 20))
+                Text("ゲーム")
+                    .font(.system(.title3, design: .rounded))
+                    .fontWeight(.heavy)
+                Spacer()
+                Image(systemName: "chevron.right")
+            }
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, Spacing.lg)
+            .padding(.vertical, Spacing.md)
+            .background(GamePalette.actionGradient, in: Theme.Radius.shape(Theme.Radius.medium))
+            .padding(.horizontal, Spacing.lg)
+            .padding(.top, Spacing.xs)
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: Layout.minTapTarget + 12)
+        .accessibilityLabel("ゲームで遊ぶ")
+    }
+
+    /// 音声モード（ハンズフリーセッション）中、部屋の照明を落とすような控えめなトーンに変化させる背景。
+    /// セマンティックカラー(Theme.Palette.background)はそのままに、ごくわずかな暗さを重ねるだけに留め、
+    /// ダーク/ライトいずれのモードでも破綻しないようにする。
+    private var calmBackground: some View {
+        Theme.Palette.background
+            .overlay(Color.black.opacity(viewModel.isHandsFreeActive ? 0.035 : 0))
+            .animation(Theme.Motion.animation(Theme.Motion.settle, reduceMotion: reduceMotion), value: viewModel.isHandsFreeActive)
     }
 
     private var displayModeToggleButton: some View {
@@ -89,67 +134,53 @@ struct ChatView: View {
         .accessibilityLabel(displayMode == .avatar ? "会話履歴を表示" : "アバター表示に戻る")
     }
 
-    private var analysisButton: some View {
-        Button {
-            analysisInitialTab = .conversation
-            showingAnalysis = true
-        } label: {
-            Image(systemName: "chart.bar.doc.horizontal")
-        }
-        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-        .accessibilityLabel("セッション分析を表示")
-    }
-
-    private var hypothesisButton: some View {
-        Button {
-            analysisInitialTab = .hypothesis
-            showingAnalysis = true
-        } label: {
-            Image(systemName: "lightbulb")
-        }
-        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-        .accessibilityLabel("仮説を表示")
-    }
-
-    private var cameraToggleButton: some View {
-        Button {
-            showingFaceDebug = true
-        } label: {
-            Image(systemName: viewModel.isCameraActive ? "camera.fill" : "camera")
-                .foregroundStyle(viewModel.isCameraActive ? Color.red : Color.primary)
-        }
-        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-        .accessibilityLabel(viewModel.isCameraActive ? "カメラ動作中。表情トラッキング画面を開く" : "表情トラッキングを開始")
-    }
-
-    private var memoryButton: some View {
-        Button {
-            showingMemory = true
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "text.book.closed")
-                if viewModel.memoryStore.topics.count > 0 {
-                    Text("\(min(viewModel.memoryStore.topics.count, 99))")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(3)
-                        .background(Color.red, in: Circle())
-                        .offset(x: 10, y: -8)
-                }
+    /// 主要な操作（マイク・音声/テキスト切り替え・送信）以外はすべてこの「その他」メニューに
+    /// 集約する。並び順は使用頻度の目安（メモ・仮説 → 履歴 → 設定）とし、最後に表情トラッキング
+    /// （確認用途で使用頻度が最も低い）を置く。Label(_:systemImage:)を使うことで、
+    /// 各項目のアイコン・ラベルの視覚的な重みが自動的に揃う。
+    private var moreMenu: some View {
+        Menu {
+            Button {
+                showingMemory = true
+            } label: {
+                Label(memoryMenuLabel, systemImage: "text.book.closed")
             }
+            Button {
+                analysisInitialTab = .hypothesis
+                showingAnalysis = true
+            } label: {
+                Label("仮説", systemImage: "lightbulb")
+            }
+            Button {
+                analysisInitialTab = .conversation
+                showingAnalysis = true
+            } label: {
+                Label("履歴", systemImage: "chart.bar.doc.horizontal")
+            }
+            Button {
+                showingSettings = true
+            } label: {
+                Label("設定", systemImage: "gearshape")
+            }
+            Button {
+                showingFaceDebug = true
+            } label: {
+                Label(cameraMenuLabel, systemImage: viewModel.isCameraActive ? "camera.fill" : "camera")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
         .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-        .accessibilityLabel("メモを表示。\(viewModel.memoryStore.topics.count)件のトピックが記録されています")
+        .accessibilityLabel("その他のメニュー")
     }
 
-    private var settingsButton: some View {
-        Button {
-            showingSettings = true
-        } label: {
-            Image(systemName: "gearshape")
-        }
-        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-        .accessibilityLabel("設定を表示")
+    private var memoryMenuLabel: String {
+        let count = viewModel.memoryStore.topics.count
+        return count > 0 ? "メモ（\(min(count, 99))）" : "メモ"
+    }
+
+    private var cameraMenuLabel: String {
+        viewModel.isCameraActive ? "表情トラッキング（動作中）" : "表情トラッキング"
     }
 
     private var avatarModeBody: some View {
@@ -160,7 +191,8 @@ struct ChatView: View {
                 state: viewModel.conversationState,
                 audioLevel: viewModel.audioLevel,
                 lastSpeechPulseAt: viewModel.lastSpeechPulseAt,
-                smileLevel: viewModel.isCameraActive ? viewModel.faceSignals.smile : 0
+                smileLevel: viewModel.isCameraActive ? viewModel.faceSignals.smile : 0,
+                isCalmMode: viewModel.isHandsFreeActive
             )
             .padding(.horizontal, Spacing.xxl)
             .frame(maxHeight: Layout.avatarMaxHeight)
@@ -239,13 +271,13 @@ struct ChatView: View {
             }
             .onChange(of: viewModel.retryNotice) {
                 guard viewModel.retryNotice != nil else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(Theme.Motion.gentle) {
                     proxy.scrollTo("retry-banner", anchor: .bottom)
                 }
             }
             .onChange(of: viewModel.errorMessage) {
                 guard viewModel.errorMessage != nil else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(Theme.Motion.gentle) {
                     proxy.scrollTo("error-banner", anchor: .bottom)
                 }
             }
@@ -254,7 +286,7 @@ struct ChatView: View {
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
         guard let lastID = viewModel.messages.last?.id else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(Theme.Motion.gentle) {
             proxy.scrollTo(lastID, anchor: .bottom)
         }
     }
@@ -273,7 +305,7 @@ struct ChatView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 
     private var microphonePermissionBanner: some View {
@@ -294,7 +326,7 @@ struct ChatView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 
     private var cameraPermissionBanner: some View {
@@ -315,7 +347,7 @@ struct ChatView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 
     private func openSettings() {
@@ -332,7 +364,7 @@ struct ChatView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 
     private func retryBanner(_ message: String) -> some View {
@@ -345,7 +377,7 @@ struct ChatView: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
         .accessibilityElement(children: .combine)
     }
 
@@ -377,7 +409,7 @@ struct ChatView: View {
                 Text("ハンズフリー会話中（マイクボタンで終了）")
             }
             .font(Typography.caption)
-            .fontWeight(.medium)
+            .fontWeight(Theme.Weight.emphasis)
             .foregroundStyle(Color.white)
             .padding(.horizontal, Spacing.md)
             .padding(.vertical, Spacing.xs)
@@ -398,7 +430,7 @@ struct ChatView: View {
                 .lineLimit(1...5)
                 .padding(.horizontal, Spacing.md)
                 .padding(.vertical, Spacing.sm)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.inputBarCornerRadius, style: .continuous))
+                .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
                 .disabled(!viewModel.isInputEnabled)
                 .focused($isInputFocused)
                 .onSubmit(sendIfPossible)
@@ -416,7 +448,7 @@ struct ChatView: View {
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
         .frame(minHeight: Layout.minTapTarget)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.inputBarCornerRadius, style: .continuous))
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
         .accessibilityLabel("認識中のテキスト")
         .accessibilityValue(viewModel.liveTranscript.isEmpty ? "まだ発話がありません" : viewModel.liveTranscript)
     }
@@ -495,11 +527,11 @@ private struct MessageBubble: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+        .background(backgroundColor, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 
     private var backgroundColor: Color {
-        isUser ? Color.accentColor : Color(.secondarySystemBackground)
+        isUser ? Theme.Palette.accent : Theme.Palette.surface
     }
 
     private var foregroundColor: Color {
@@ -515,7 +547,7 @@ private struct FaceDescriptionDisclosureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                withAnimation(Theme.Motion.animation(Theme.Motion.gentle, reduceMotion: reduceMotion)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -535,7 +567,7 @@ private struct FaceDescriptionDisclosureView: View {
                     .foregroundStyle(Color.white.opacity(0.95))
                     .padding(Spacing.sm)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+                    .background(Color.white.opacity(0.15), in: Theme.Radius.shape(Theme.Radius.medium))
             }
         }
     }
@@ -549,7 +581,7 @@ private struct VoiceDescriptionDisclosureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                withAnimation(Theme.Motion.animation(Theme.Motion.gentle, reduceMotion: reduceMotion)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -569,7 +601,7 @@ private struct VoiceDescriptionDisclosureView: View {
                     .foregroundStyle(Color.white.opacity(0.95))
                     .padding(Spacing.sm)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+                    .background(Color.white.opacity(0.15), in: Theme.Radius.shape(Theme.Radius.medium))
             }
         }
     }
@@ -583,7 +615,7 @@ private struct ArgumentDisclosureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                withAnimation(Theme.Motion.animation(Theme.Motion.gentle, reduceMotion: reduceMotion)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -619,7 +651,7 @@ private struct ArgumentDisclosureView: View {
                 }
                 .padding(Spacing.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
+                .background(Theme.Palette.surfaceElevated, in: Theme.Radius.shape(Theme.Radius.medium))
             }
         }
     }
@@ -628,7 +660,7 @@ private struct ArgumentDisclosureView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(Typography.caption)
-                .fontWeight(.semibold)
+                .fontWeight(Theme.Weight.emphasis)
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(Typography.footnote)
@@ -641,7 +673,7 @@ private struct ArgumentDisclosureView: View {
             HStack(spacing: 4) {
                 Image(systemName: "gauge.medium")
                 Text("確からしさ")
-                    .fontWeight(.semibold)
+                    .fontWeight(Theme.Weight.emphasis)
             }
             .font(Typography.caption)
             .foregroundStyle(.secondary)
@@ -686,11 +718,11 @@ private struct StatusIndicatorView: View {
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
             Text(state.displayLabel)
                 .font(Typography.footnote)
-                .fontWeight(.medium)
+                .fontWeight(Theme.Weight.emphasis)
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.xs)
-        .background(Color(.secondarySystemBackground), in: Capsule())
+        .background(Theme.Palette.surface, in: Capsule())
         .foregroundStyle(AvatarPalette.color(for: state))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(state.displayLabel)
@@ -727,39 +759,53 @@ private struct MicButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                if state == .listening && !reduceMotion {
+        VStack(spacing: 2) {
+            Button(action: action) {
+                ZStack {
+                    if state == .listening && !reduceMotion {
+                        Circle()
+                            .stroke(Color.red.opacity(0.35), lineWidth: 2)
+                            .frame(
+                                width: Layout.micButtonSize + CGFloat(audioLevel) * Layout.micLevelRingMaxExpansion,
+                                height: Layout.micButtonSize + CGFloat(audioLevel) * Layout.micLevelRingMaxExpansion
+                            )
+                            .animation(.easeOut(duration: 0.15), value: audioLevel)
+                    }
+
                     Circle()
-                        .stroke(Color.red.opacity(0.35), lineWidth: 2)
-                        .frame(
-                            width: Layout.micButtonSize + CGFloat(audioLevel) * Layout.micLevelRingMaxExpansion,
-                            height: Layout.micButtonSize + CGFloat(audioLevel) * Layout.micLevelRingMaxExpansion
-                        )
-                        .animation(.easeOut(duration: 0.15), value: audioLevel)
+                        .fill(backgroundColor)
+                        .frame(width: Layout.micButtonSize, height: Layout.micButtonSize)
+
+                    Image(systemName: iconName)
+                        .font(Typography.title2)
+                        .foregroundStyle(.white)
                 }
-
-                Circle()
-                    .fill(backgroundColor)
-                    .frame(width: Layout.micButtonSize, height: Layout.micButtonSize)
-
-                Image(systemName: iconName)
-                    .font(Typography.title2)
-                    .foregroundStyle(.white)
             }
+            .buttonStyle(.plain)
+            .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
+            .disabled(!isEnabled)
+            // ハンズフリー待機中は「押せない」だけでなく「セッションが生きている」ことも見た目で示すため、
+            // 通常の無効表示（薄く表示）にはしない。
+            .opacity(isEnabled || isStandingByForHandsFree ? 1 : 0.4)
+            .animation(Theme.Motion.gentle, value: state)
+
+            // 単なる「マイクに切り替える」ではなく、行為の意味が伝わる控えめなラベルを添える。
+            Text(captionText)
+                .font(Typography.caption)
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
-        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-        .disabled(!isEnabled)
-        // ハンズフリー待機中は「押せない」だけでなく「セッションが生きている」ことも見た目で示すため、
-        // 通常の無効表示（薄く表示）にはしない。
-        .opacity(isEnabled || isStandingByForHandsFree ? 1 : 0.4)
-        .animation(.easeInOut(duration: 0.2), value: state)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
     }
 
+    private var captionText: String {
+        if state == .listening { return "とめる" }
+        if isStandingByForHandsFree { return "きいています" }
+        return "聞いてもらう"
+    }
+
     private var iconName: String {
-        state == .listening ? "stop.fill" : "mic.fill"
+        state == .listening ? "stop.fill" : "waveform.and.mic"
     }
 
     private var backgroundColor: Color {
@@ -769,9 +815,9 @@ private struct MicButton: View {
     }
 
     private var accessibilityLabel: String {
-        if state == .listening { return "ハンズフリー音声入力を停止" }
-        if isStandingByForHandsFree { return "ハンズフリー会話中。応答後に自動的に聞き取りを再開します" }
-        return "ハンズフリー音声入力を開始"
+        if state == .listening { return "聞き取りをやめる" }
+        if isStandingByForHandsFree { return "AIが応答中です。終わったら自動的に聞き取りを再開します" }
+        return "話す。タップするとAIが聞いてくれます"
     }
 }
 

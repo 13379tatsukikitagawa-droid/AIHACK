@@ -17,4 +17,10 @@ nonisolated enum ModelCatalog {
     static let ttsPrimary = "openai/gpt-4o-mini-tts"
     /// 会話から記憶に値する話題を抽出する軽量な判定に使うモデル。速度とコストを優先する。
     static let memoryExtraction = "openai/gpt-4o-mini"
+    /// 感情当てゲーム（Game機能）の感情推測に使うモデル。ブースでの実演のためテンポを損なわない
+    /// 速度を保ちつつ、対話用の軽量モデルより一段上の推論力を持つモデルを割り当て、判定の妥当性を優先する。
+    static let emotionGuessing = "openai/gpt-4.1-mini"
+    /// 「30秒プレゼン」（Game機能）の採点に使うモデル。内容の説得力を判定する必要があるため、
+    /// 速度より精度を優先し、仮説生成と同じ最も高性能なモデルを割り当てる。
+    static let presentationScoring = "anthropic/claude-opus-4.8"
 }
