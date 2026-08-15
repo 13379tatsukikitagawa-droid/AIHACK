@@ -250,7 +250,7 @@ final class GameViewModel {
 
     private func proceedToJudging(prompt: String, faceSignals: FaceSignals, voiceSignals: VoiceSignals) async {
         phase = .judging
-        let faceDescription = FaceSignalDescriber.describe(faceSignals)
+        let faceDescription = GameFaceSignalDescriber.describe(faceSignals)
         let voiceDescription = GameVoiceSignalDescriber.describe(voiceSignals)
         pendingContext = JudgingContext(prompt: prompt, faceDescription: faceDescription, voiceDescription: voiceDescription)
         await performJudging()

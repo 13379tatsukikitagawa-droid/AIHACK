@@ -1,55 +1,167 @@
 import SwiftUI
+import Charts
 
 // MARK: - タブ2: 表情・声の推移
 
 struct FaceTimelineTab: View {
     let sessionLog: SessionLog
 
-    @State private var selectedFaceFeatures: Set<FaceFeatureKind> = [.smile, .browRaise]
-    @State private var selectedVoiceFeatures: Set<VoiceFeatureKind> = [.speechRate, .averageVolume]
+    @State private var selectedFaceGroup: FaceFeatureKind.Group = .expression
+    @State private var selectedFaceFeatures: Set<FaceFeatureKind> = Set(FaceFeatureKind.Group.expression.features)
 
     var body: some View {
         if sessionLog.faceSignalSamples.isEmpty && sessionLog.voiceSignalSamples.isEmpty {
             emptyState
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: Spacing.lg) {
+                VStack(alignment: .leading, spacing: Spacing.xl) {
                     if !sessionLog.faceSignalSamples.isEmpty {
-                        Text("表情")
-                            .font(Typography.headline)
-                        faceFeatureToggles
-                        FaceTimelineChart(
-                            samples: sessionLog.faceSignalSamples,
-                            turns: sessionLog.turns,
-                            selectedFeatures: selectedFaceFeatures,
-                            range: sharedTimeRange
-                        )
-                        legendNote
-                        detectionSummary
+                        faceSection
                     }
 
                     if !sessionLog.voiceSignalSamples.isEmpty {
-                        Divider()
-                        Text("声")
-                            .font(Typography.headline)
-                        Text("音声入力の発話ごとに1点を記録するため、表情ほど連続的ではありません。")
-                            .font(Typography.caption)
-                            .foregroundStyle(.secondary)
-                        voiceFeatureToggles
-                        VoiceTimelineChart(
-                            samples: sessionLog.voiceSignalSamples,
-                            turns: sessionLog.turns,
-                            selectedFeatures: selectedVoiceFeatures,
-                            range: sharedTimeRange
-                        )
-                        voiceSummary
+                        voiceSection
                     }
-
-                    timeAxisFooter
                 }
                 .padding(Spacing.lg)
             }
         }
+    }
+
+    // MARK: 表情
+
+    private var faceSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text("表情")
+                .font(Typography.title3)
+                .fontWeight(Theme.Weight.emphasis)
+
+            Picker("項目グループ", selection: $selectedFaceGroup) {
+                ForEach(FaceFeatureKind.Group.allCases) { group in
+                    Text(group.label).tag(group)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: selectedFaceGroup) { _, newGroup in
+                selectedFaceFeatures = Set(newGroup.features)
+            }
+
+            faceFeatureToggles
+
+            FaceTimelineChart(
+                samples: sessionLog.faceSignalSamples,
+                turns: sessionLog.turns,
+                group: selectedFaceGroup,
+                selectedFeatures: selectedFaceFeatures,
+                range: sharedTimeRange
+            )
+
+            legendNote
+            detectionSummary
+        }
+    }
+
+    private var faceFeatureToggles: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: Spacing.sm)], alignment: .leading, spacing: Spacing.sm) {
+            ForEach(selectedFaceGroup.features) { feature in
+                featureToggleChip(
+                    label: feature.label,
+                    color: feature.color,
+                    isSelected: selectedFaceFeatures.contains(feature)
+                ) {
+                    if selectedFaceFeatures.contains(feature) {
+                        selectedFaceFeatures.remove(feature)
+                    } else {
+                        selectedFaceFeatures.insert(feature)
+                    }
+                }
+            }
+        }
+    }
+
+    private func featureToggleChip(label: String, color: Color, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: Spacing.xs) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                Text(label)
+                    .font(Typography.caption)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, Spacing.sm)
+            .frame(minHeight: Layout.minTapTarget)
+            .background(isSelected ? color.opacity(0.16) : Theme.Palette.surface, in: Capsule())
+            .overlay(Capsule().strokeBorder(isSelected ? color : Color.clear, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private var legendNote: some View {
+        HStack(spacing: Spacing.lg) {
+            HStack(spacing: Spacing.xs) {
+                Circle().fill(DataVizPalette.blue).frame(width: 8, height: 8)
+                Text("テキスト発話")
+            }
+            HStack(spacing: Spacing.xs) {
+                Circle().fill(DataVizPalette.hero).frame(width: 8, height: 8)
+                Text("音声発話")
+            }
+            HStack(spacing: Spacing.xs) {
+                RoundedRectangle(cornerRadius: 2).fill(DataVizPalette.mutedBand).frame(width: 14, height: 8)
+                Text("顔が未検出")
+            }
+        }
+        .font(Typography.caption)
+        .foregroundStyle(Theme.Palette.textSecondary)
+    }
+
+    private var detectionSummary: some View {
+        let total = sessionLog.faceSignalSamples.count
+        let detected = sessionLog.faceSignalSamples.filter { $0.signals.isFaceDetected }.count
+        let rate = total > 0 ? Double(detected) / Double(total) * 100 : 0
+        return StatTile(
+            icon: "face.smiling",
+            title: "顔検出率",
+            value: "\(String(format: "%.0f", rate))%",
+            caption: "サンプル数 \(total)"
+        )
+    }
+
+    // MARK: 声
+
+    private var voiceSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Divider()
+
+            Text("声")
+                .font(Typography.title3)
+                .fontWeight(Theme.Weight.emphasis)
+            Text("音声入力の発話ごとに1点を記録するため、項目ごとに独立したグラフで表示します。")
+                .font(Typography.caption)
+                .foregroundStyle(Theme.Palette.textSecondary)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: Spacing.md)], spacing: Spacing.md) {
+                ForEach(VoiceFeatureKind.allCases) { feature in
+                    VoiceStatCard(feature: feature, samples: sessionLog.voiceSignalSamples, range: sharedTimeRange)
+                }
+            }
+
+            voiceSummary
+        }
+    }
+
+    private var voiceSummary: some View {
+        let samples = sessionLog.voiceSignalSamples
+        let averageSilenceCount = samples.isEmpty ? 0 : Double(samples.reduce(0) { $0 + $1.signals.silenceSegmentCount }) / Double(samples.count)
+        return StatTile(
+            icon: "waveform",
+            title: "発話あたりの間（沈黙）の平均回数",
+            value: String(format: "%.1f回", averageSilenceCount),
+            caption: "発話数 \(samples.count)"
+        )
     }
 
     /// 表情・声の両方のグラフで同じ時間軸を使うことで、同じ時刻の変化を見比べられるようにする。
@@ -72,309 +184,287 @@ struct FaceTimelineTab: View {
             description: Text("カメラを有効にする、または音声で会話すると、表情・声の推移がここに表示されます。")
         )
     }
+}
 
-    private var faceFeatureToggles: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("表示する項目")
-                .font(Typography.subheadline)
-                .fontWeight(.semibold)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: Spacing.sm)], alignment: .leading, spacing: Spacing.sm) {
-                ForEach(FaceFeatureKind.allCases) { feature in
-                    featureToggleChip(
-                        label: feature.label,
-                        color: feature.color,
-                        isSelected: selectedFaceFeatures.contains(feature)
-                    ) {
-                        if selectedFaceFeatures.contains(feature) {
-                            selectedFaceFeatures.remove(feature)
-                        } else {
-                            selectedFaceFeatures.insert(feature)
-                        }
-                    }
-                }
-            }
-        }
-    }
+/// セクション末尾の要約に使う、数値を大きく見せるための小さな統計カード。
+private struct StatTile: View {
+    let icon: String
+    let title: String
+    let value: String
+    let caption: String
 
-    private var voiceFeatureToggles: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("表示する項目")
-                .font(Typography.subheadline)
-                .fontWeight(.semibold)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: Spacing.sm)], alignment: .leading, spacing: Spacing.sm) {
-                ForEach(VoiceFeatureKind.allCases) { feature in
-                    featureToggleChip(
-                        label: feature.label,
-                        color: feature.color,
-                        isSelected: selectedVoiceFeatures.contains(feature)
-                    ) {
-                        if selectedVoiceFeatures.contains(feature) {
-                            selectedVoiceFeatures.remove(feature)
-                        } else {
-                            selectedVoiceFeatures.insert(feature)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Image(systemName: icon)
+                .font(Typography.title3)
+                .foregroundStyle(DataVizPalette.hero)
+                .frame(width: 32)
 
-    private func featureToggleChip(label: String, color: Color, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: Spacing.xs) {
-                Circle()
-                    .fill(color)
-                    .frame(width: 8, height: 8)
-                Text(label)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
                     .font(Typography.caption)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                Text(value)
+                    .font(Typography.title2)
+                    .fontWeight(Theme.Weight.strong)
+                    .monospacedDigit()
             }
-            .padding(.horizontal, Spacing.sm)
-            .frame(minHeight: Layout.minTapTarget)
-            .background(isSelected ? color.opacity(0.2) : Color(.secondarySystemBackground), in: Capsule())
-            .overlay(Capsule().strokeBorder(isSelected ? color : Color.clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
 
-    private var timeAxisFooter: some View {
-        Group {
-            let range = sharedTimeRange
-            HStack {
-                Text(range.lowerBound, style: .time)
-                    .font(Typography.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(range.upperBound, style: .time)
-                    .font(Typography.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
+            Spacer()
 
-    private var legendNote: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            HStack(spacing: Spacing.xs) {
-                Circle().fill(Color.blue).frame(width: 8, height: 8)
-                Text("テキスト入力の発話")
-                    .font(Typography.caption)
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: Spacing.xs) {
-                Circle().fill(Color.red).frame(width: 8, height: 8)
-                Text("音声入力の発話")
-                    .font(Typography.caption)
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: Spacing.xs) {
-                RoundedRectangle(cornerRadius: 2).fill(Color(.tertiarySystemFill)).frame(width: 14, height: 8)
-                Text("顔が検出されていなかった区間")
-                    .font(Typography.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(caption)
+                .font(Typography.caption)
+                .foregroundStyle(Theme.Palette.textSecondary)
         }
-    }
-
-    private var detectionSummary: some View {
-        let total = sessionLog.faceSignalSamples.count
-        let detected = sessionLog.faceSignalSamples.filter { $0.signals.isFaceDetected }.count
-        let rate = total > 0 ? Double(detected) / Double(total) * 100 : 0
-        return HStack(spacing: Spacing.sm) {
-            Image(systemName: "face.smiling")
-                .foregroundStyle(.secondary)
-            Text("セッション中の顔検出率: \(String(format: "%.0f", rate))%（サンプル数: \(total)）")
-                .font(Typography.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var voiceSummary: some View {
-        let samples = sessionLog.voiceSignalSamples
-        let averageSilenceCount = samples.isEmpty ? 0 : Double(samples.reduce(0) { $0 + $1.signals.silenceSegmentCount }) / Double(samples.count)
-        return HStack(spacing: Spacing.sm) {
-            Image(systemName: "waveform")
-                .foregroundStyle(.secondary)
-            Text("発話あたりの間（沈黙）の平均回数: \(String(format: "%.1f", averageSilenceCount))回（発話数: \(samples.count)）")
-                .font(Typography.footnote)
-                .foregroundStyle(.secondary)
-        }
+        .padding(Spacing.md)
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
     }
 }
 
-/// Canvasによる複数系列の折れ線グラフ。TimelineViewは使わず、データ変化時のみ再描画するため
-/// 常時MainActorを占有しない。
+/// Swift Chartsによる表情推移グラフ。ドラッグでその時刻の各系列の値を確認できる。
 private struct FaceTimelineChart: View {
     let samples: [FaceSignalSample]
     let turns: [TurnLog]
+    let group: FaceFeatureKind.Group
     let selectedFeatures: Set<FaceFeatureKind>
     let range: ClosedRange<Date>
 
-    var body: some View {
-        Canvas { context, size in
-            draw(context: context, size: size)
-        }
-        .frame(height: 220)
-        .padding(Spacing.sm)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
-        .accessibilityLabel("表情推移グラフ")
-        .accessibilityHint("選択中の項目: \(selectedFeatures.map(\.label).joined(separator: "、"))")
-    }
+    @State private var scrubDate: Date?
 
-    private func xPosition(for date: Date, width: CGFloat) -> CGFloat {
-        let total = range.upperBound.timeIntervalSince(range.lowerBound)
-        guard total > 0 else { return 0 }
-        let progress = date.timeIntervalSince(range.lowerBound) / total
-        return CGFloat(progress) * width
-    }
-
-    private func yPosition(for value: Float, range: ClosedRange<Float>, height: CGFloat) -> CGFloat {
-        let normalized = (value - range.lowerBound) / (range.upperBound - range.lowerBound)
-        return height - CGFloat(normalized) * height
-    }
-
-    private func draw(context: GraphicsContext, size: CGSize) {
-        drawUndetectedRanges(context: context, size: size)
-        for feature in FaceFeatureKind.allCases where selectedFeatures.contains(feature) {
-            drawLine(for: feature, context: context, size: size)
-        }
-        drawTurnMarkers(context: context, size: size)
-    }
-
-    private func drawUndetectedRanges(context: GraphicsContext, size: CGSize) {
-        guard !samples.isEmpty else { return }
+    private var undetectedBands: [(start: Date, end: Date)] {
+        var bands: [(Date, Date)] = []
         var rangeStart: Date?
         for sample in samples {
             if !sample.signals.isFaceDetected {
                 if rangeStart == nil { rangeStart = sample.timestamp }
             } else if let start = rangeStart {
-                drawUndetectedBand(from: start, to: sample.timestamp, context: context, size: size)
+                bands.append((start, sample.timestamp))
                 rangeStart = nil
             }
         }
         if let start = rangeStart, let last = samples.last?.timestamp {
-            drawUndetectedBand(from: start, to: last, context: context, size: size)
+            bands.append((start, last))
         }
+        return bands
     }
 
-    private func drawUndetectedBand(from start: Date, to end: Date, context: GraphicsContext, size: CGSize) {
-        let x0 = xPosition(for: start, width: size.width)
-        let x1 = xPosition(for: end, width: size.width)
-        let rect = CGRect(x: x0, y: 0, width: max(1, x1 - x0), height: size.height)
-        context.fill(Path(rect), with: .color(Color(.tertiarySystemFill)))
+    private var orderedSelectedFeatures: [FaceFeatureKind] {
+        group.features.filter { selectedFeatures.contains($0) }
     }
 
-    private func drawLine(for feature: FaceFeatureKind, context: GraphicsContext, size: CGSize) {
-        var path = Path()
-        var started = false
-        for sample in samples {
-            guard sample.signals.isFaceDetected else {
-                started = false
-                continue
+    private var nearestSample: FaceSignalSample? {
+        guard let scrubDate else { return nil }
+        return samples.min { abs($0.timestamp.timeIntervalSince(scrubDate)) < abs($1.timestamp.timeIntervalSince(scrubDate)) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            if let nearestSample {
+                scrubReadout(for: nearestSample)
             }
-            let x = xPosition(for: sample.timestamp, width: size.width)
-            let y = yPosition(for: feature.value(from: sample.signals), range: feature.range, height: size.height)
-            if started {
-                path.addLine(to: CGPoint(x: x, y: y))
-            } else {
-                path.move(to: CGPoint(x: x, y: y))
-                started = true
+
+            Chart {
+                ForEach(Array(undetectedBands.enumerated()), id: \.offset) { _, band in
+                    RectangleMark(
+                        xStart: .value("開始", band.start),
+                        xEnd: .value("終了", band.end)
+                    )
+                    .foregroundStyle(DataVizPalette.mutedBand)
+                }
+
+                ForEach(orderedSelectedFeatures) { feature in
+                    ForEach(detectedSamples, id: \.id) { sample in
+                        LineMark(
+                            x: .value("時刻", sample.timestamp),
+                            y: .value(feature.label, feature.value(from: sample.signals))
+                        )
+                        .foregroundStyle(by: .value("項目", feature.label))
+                        .interpolationMethod(.monotone)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+
+                    if orderedSelectedFeatures.count == 1 {
+                        ForEach(detectedSamples, id: \.id) { sample in
+                            AreaMark(
+                                x: .value("時刻", sample.timestamp),
+                                y: .value(feature.label, feature.value(from: sample.signals))
+                            )
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [feature.color.opacity(0.22), feature.color.opacity(0)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                        }
+                    }
+                }
+
+                ForEach(turns) { turn in
+                    RuleMark(x: .value("発話", turn.timestamp))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .foregroundStyle(Theme.Palette.textSecondary.opacity(0.35))
+                        .annotation(position: .top, spacing: 0) {
+                            Circle()
+                                .fill(turn.inputMethod == .voice ? DataVizPalette.hero : DataVizPalette.blue)
+                                .frame(width: 6, height: 6)
+                        }
+                }
+
+                if let nearestSample {
+                    RuleMark(x: .value("選択中", nearestSample.timestamp))
+                        .lineStyle(StrokeStyle(lineWidth: 1))
+                        .foregroundStyle(Theme.Palette.textPrimary.opacity(0.5))
+                }
+            }
+            .chartForegroundStyleScale(domain: group.features.map(\.label), range: group.features.map(\.color))
+            .chartLegend(selectedFeatures.count > 1 ? .visible : .hidden)
+            .chartLegend(position: .bottom, alignment: .leading, spacing: Spacing.sm)
+            .chartYScale(domain: group.sharedRange)
+            .chartXScale(domain: range)
+            .chartYAxis {
+                AxisMarks(position: .leading) { _ in
+                    AxisGridLine().foregroundStyle(Theme.Palette.divider)
+                    AxisValueLabel()
+                        .font(Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                    AxisGridLine().foregroundStyle(Theme.Palette.divider)
+                    AxisValueLabel(format: .dateTime.minute().second())
+                        .font(Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+            }
+            .frame(height: 220)
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(Color.clear)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    updateScrub(at: value.location, proxy: proxy, geometry: geometry)
+                                }
+                                .onEnded { _ in scrubDate = nil }
+                        )
+                }
             }
         }
-        context.stroke(path, with: .color(feature.color), lineWidth: 2)
+        .padding(Spacing.md)
+        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
+        .accessibilityLabel("表情推移グラフ")
+        .accessibilityHint("選択中の項目: \(orderedSelectedFeatures.map(\.label).joined(separator: "、"))")
     }
 
-    private func drawTurnMarkers(context: GraphicsContext, size: CGSize) {
-        for turn in turns {
-            let x = xPosition(for: turn.timestamp, width: size.width)
+    private var detectedSamples: [FaceSignalSample] {
+        samples.filter { $0.signals.isFaceDetected }
+    }
 
-            var marker = Path()
-            marker.move(to: CGPoint(x: x, y: 0))
-            marker.addLine(to: CGPoint(x: x, y: size.height))
-            context.stroke(marker, with: .color(Color.primary.opacity(0.2)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+    private func updateScrub(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
+        let plotFrame = geometry[proxy.plotAreaFrame]
+        let originX = location.x - plotFrame.origin.x
+        guard let date: Date = proxy.value(atX: originX) else { return }
+        scrubDate = date
+    }
 
-            let dotColor: Color = turn.inputMethod == .voice ? .red : .blue
-            let dotRect = CGRect(x: x - 3, y: 3, width: 6, height: 6)
-            context.fill(Path(ellipseIn: dotRect), with: .color(dotColor))
+    private func scrubReadout(for sample: FaceSignalSample) -> some View {
+        HStack(spacing: Spacing.md) {
+            Text(sample.timestamp, style: .time)
+                .font(Typography.caption)
+                .foregroundStyle(Theme.Palette.textSecondary)
+            ForEach(orderedSelectedFeatures) { feature in
+                HStack(spacing: 4) {
+                    Circle().fill(feature.color).frame(width: 6, height: 6)
+                    Text(formatted(feature.value(from: sample.signals), for: feature))
+                        .font(Typography.caption)
+                        .fontWeight(Theme.Weight.emphasis)
+                        .monospacedDigit()
+                }
+            }
         }
+        .transition(.opacity)
+    }
+
+    private func formatted(_ value: Float, for feature: FaceFeatureKind) -> String {
+        feature.range == 0...1 ? String(format: "%.0f%%", value * 100) : String(format: "%+.2f", value)
     }
 }
 
-/// 声の推移グラフ。発話1回につき1点しかないため、点と点をつなぐ折れ線になる（連続的な波形ではない）。
-/// x軸はFaceTimelineChartと完全に同じrangeを受け取ることで、時間軸を揃える。
-private struct VoiceTimelineChart: View {
+/// 声の特徴量1つぶんの、統計値＋小さな折れ線（スパークライン）を持つカード。
+private struct VoiceStatCard: View {
+    let feature: VoiceFeatureKind
     let samples: [VoiceSignalSample]
-    let turns: [TurnLog]
-    let selectedFeatures: Set<VoiceFeatureKind>
     let range: ClosedRange<Date>
 
+    private var average: Float {
+        guard !samples.isEmpty else { return 0 }
+        return samples.reduce(0) { $0 + feature.value(from: $1.signals) } / Float(samples.count)
+    }
+
     var body: some View {
-        Canvas { context, size in
-            draw(context: context, size: size)
-        }
-        .frame(height: 180)
-        .padding(Spacing.sm)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: Layout.bubbleCornerRadius, style: .continuous))
-        .accessibilityLabel("声の推移グラフ")
-        .accessibilityHint("選択中の項目: \(selectedFeatures.map(\.label).joined(separator: "、"))")
-    }
-
-    private func xPosition(for date: Date, width: CGFloat) -> CGFloat {
-        let total = range.upperBound.timeIntervalSince(range.lowerBound)
-        guard total > 0 else { return 0 }
-        let progress = date.timeIntervalSince(range.lowerBound) / total
-        return CGFloat(progress) * width
-    }
-
-    private func yPosition(for value: Float, range: ClosedRange<Float>, height: CGFloat) -> CGFloat {
-        let clamped = min(max(value, range.lowerBound), range.upperBound)
-        let normalized = (clamped - range.lowerBound) / (range.upperBound - range.lowerBound)
-        return height - CGFloat(normalized) * height
-    }
-
-    private func draw(context: GraphicsContext, size: CGSize) {
-        for feature in VoiceFeatureKind.allCases where selectedFeatures.contains(feature) {
-            drawLine(for: feature, context: context, size: size)
-        }
-        drawTurnMarkers(context: context, size: size)
-    }
-
-    private func drawLine(for feature: VoiceFeatureKind, context: GraphicsContext, size: CGSize) {
-        guard samples.count > 1 else {
-            drawSinglePoint(for: feature, context: context, size: size)
-            return
-        }
-        var path = Path()
-        var started = false
-        for sample in samples {
-            let x = xPosition(for: sample.timestamp, width: size.width)
-            let y = yPosition(for: feature.value(from: sample.signals), range: feature.range, height: size.height)
-            if started {
-                path.addLine(to: CGPoint(x: x, y: y))
-            } else {
-                path.move(to: CGPoint(x: x, y: y))
-                started = true
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(spacing: Spacing.xs) {
+                Image(systemName: feature.icon)
+                    .font(Typography.caption)
+                    .foregroundStyle(DataVizPalette.hero)
+                Text(feature.label)
+                    .font(Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
             }
-            context.fill(Path(ellipseIn: CGRect(x: x - 2, y: y - 2, width: 4, height: 4)), with: .color(feature.color))
+
+            Text(feature.formattedValue(average))
+                .font(Typography.headline)
+                .fontWeight(Theme.Weight.strong)
+                .monospacedDigit()
+
+            sparkline
         }
-        context.stroke(path, with: .color(feature.color), lineWidth: 2)
+        .padding(Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Palette.surfaceElevated, in: Theme.Radius.shape(Theme.Radius.small))
     }
 
-    private func drawSinglePoint(for feature: VoiceFeatureKind, context: GraphicsContext, size: CGSize) {
-        guard let sample = samples.first else { return }
-        let x = xPosition(for: sample.timestamp, width: size.width)
-        let y = yPosition(for: feature.value(from: sample.signals), range: feature.range, height: size.height)
-        context.fill(Path(ellipseIn: CGRect(x: x - 3, y: y - 3, width: 6, height: 6)), with: .color(feature.color))
-    }
+    @ViewBuilder
+    private var sparkline: some View {
+        if samples.count > 1 {
+            Chart(samples, id: \.id) { sample in
+                LineMark(
+                    x: .value("時刻", sample.timestamp),
+                    y: .value(feature.label, min(max(feature.value(from: sample.signals), feature.range.lowerBound), feature.range.upperBound))
+                )
+                .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .foregroundStyle(DataVizPalette.hero)
 
-    private func drawTurnMarkers(context: GraphicsContext, size: CGSize) {
-        for turn in turns {
-            let x = xPosition(for: turn.timestamp, width: size.width)
-            var marker = Path()
-            marker.move(to: CGPoint(x: x, y: 0))
-            marker.addLine(to: CGPoint(x: x, y: size.height))
-            context.stroke(marker, with: .color(Color.primary.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                PointMark(
+                    x: .value("時刻", sample.timestamp),
+                    y: .value(feature.label, min(max(feature.value(from: sample.signals), feature.range.lowerBound), feature.range.upperBound))
+                )
+                .symbolSize(14)
+                .foregroundStyle(DataVizPalette.hero)
+            }
+            .chartYScale(domain: feature.range)
+            .chartXScale(domain: range)
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .frame(height: 44)
+            .accessibilityLabel("\(feature.label)の推移")
+        } else if let sample = samples.first {
+            HStack {
+                Circle().fill(DataVizPalette.hero).frame(width: 8, height: 8)
+                Text("発話1回分のみ")
+                    .font(Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                Spacer()
+            }
+            .frame(height: 44)
+            .accessibilityHidden(true)
+            .id(sample.id)
         }
     }
 }
@@ -411,7 +501,8 @@ private struct VoiceTimelineChart: View {
             silenceSegmentCount: 1,
             averageSilenceDuration: 0.4,
             utteranceDuration: 3.2,
-            pitchVariationProxy: 0.3
+            pitchVariationProxy: 0.3,
+            averagePitchHz: 165
         ),
         at: start.addingTimeInterval(18)
     )
@@ -423,7 +514,8 @@ private struct VoiceTimelineChart: View {
             silenceSegmentCount: 3,
             averageSilenceDuration: 0.8,
             utteranceDuration: 4.1,
-            pitchVariationProxy: 0.55
+            pitchVariationProxy: 0.55,
+            averagePitchHz: 210
         ),
         at: start.addingTimeInterval(68)
     )

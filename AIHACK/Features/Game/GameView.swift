@@ -146,6 +146,8 @@ struct GameView: View {
                 PresentationResultView(
                     prompt: presentationViewModel.currentPrompt,
                     result: result,
+                    faceTimeline: presentationViewModel.faceTimeline,
+                    volumeTimeline: presentationViewModel.volumeTimeline,
                     onPlayAgain: presentationViewModel.startNextRound,
                     onRegister: { nickname in
                         presentationViewModel.leaderboard.register(nickname: nickname, score: result.total)

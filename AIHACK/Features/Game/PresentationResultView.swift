@@ -1,9 +1,12 @@
 import SwiftUI
+import Charts
 
 /// 結果画面。合計点を大きく表示し、3軸をバーチャートで視覚化する。ランキング登録は任意。
 struct PresentationResultView: View {
     let prompt: String
     let result: PresentationScoreResult
+    let faceTimeline: [FaceSignalSample]
+    let volumeTimeline: [PresentationVolumeSample]
     let onPlayAgain: () -> Void
     let onRegister: (String) -> Void
     let onShowLeaderboard: () -> Void
@@ -26,6 +29,17 @@ struct PresentationResultView: View {
 
                 ScoreBarsView(result: result)
                     .padding(.horizontal, Spacing.xl)
+
+                contentFeedbackCard
+                    .padding(.horizontal, Spacing.xl)
+
+                recommendedStructureCard
+                    .padding(.horizontal, Spacing.xl)
+
+                if !faceTimeline.isEmpty || !volumeTimeline.isEmpty {
+                    PresentationTimelineCharts(faceTimeline: faceTimeline, volumeTimeline: volumeTimeline)
+                        .padding(.horizontal, Spacing.xl)
+                }
 
                 actionButtons
             }
@@ -104,6 +118,179 @@ struct PresentationResultView: View {
         }
         .padding(.horizontal, Spacing.xl)
         .padding(.top, Spacing.sm)
+    }
+
+    private var contentFeedbackCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Label("内容へのフィードバック", systemImage: "text.bubble.fill")
+                .font(Typography.footnote)
+                .fontWeight(.bold)
+                .foregroundStyle(GamePalette.presentationContentAxisColor)
+
+            Text(result.contentFeedback)
+                .font(Typography.footnote)
+                .foregroundStyle(.primary)
+        }
+        .padding(Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("内容へのフィードバック: \(result.contentFeedback)")
+    }
+
+    private var recommendedStructureCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Label("次に活かせるおすすめの構成", systemImage: "list.number")
+                .font(Typography.footnote)
+                .fontWeight(.bold)
+                .foregroundStyle(GamePalette.presentationGradient)
+
+            ForEach(Array(result.recommendedStructure.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .top, spacing: Spacing.sm) {
+                    Text("\(index + 1)")
+                        .font(Typography.caption)
+                        .fontWeight(.heavy)
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(GamePalette.presentationGradient, in: Circle())
+                    Text(step)
+                        .font(Typography.footnote)
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+        .padding(Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("次に活かせるおすすめの構成: " + result.recommendedStructure.joined(separator: "、"))
+    }
+}
+
+/// 本番中の「表情の推移」「音量の推移」を折れ線グラフで見せる。連続的に記録できるこの2つに絞り、
+/// 発話速度など事後にしか集計できない指標は含めない。
+private struct PresentationTimelineCharts: View {
+    let faceTimeline: [FaceSignalSample]
+    let volumeTimeline: [PresentationVolumeSample]
+
+    private var sharedRange: ClosedRange<Date> {
+        var timestamps: [Date] = []
+        timestamps += faceTimeline.map(\.timestamp)
+        timestamps += volumeTimeline.map(\.timestamp)
+        guard let minDate = timestamps.min(), let maxDate = timestamps.max(), minDate < maxDate else {
+            let now = Date()
+            return now.addingTimeInterval(-1)...now
+        }
+        return minDate...maxDate
+    }
+
+    private func expressiveness(of signals: FaceSignals) -> Float {
+        (signals.smile + signals.browRaise + signals.browFurrow + signals.jawOpen) / 4
+    }
+
+    var body: some View {
+        VStack(spacing: Spacing.lg) {
+            if !faceTimeline.isEmpty {
+                timelineCard(
+                    title: "表情の推移",
+                    icon: "face.smiling.fill",
+                    color: GamePalette.presentationExpressionAxisColor
+                ) {
+                    Chart(faceTimeline) { sample in
+                        AreaMark(
+                            x: .value("時刻", sample.timestamp),
+                            y: .value("表情の動き", expressiveness(of: sample.signals))
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    GamePalette.presentationExpressionAxisColor.opacity(0.3),
+                                    GamePalette.presentationExpressionAxisColor.opacity(0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        LineMark(
+                            x: .value("時刻", sample.timestamp),
+                            y: .value("表情の動き", expressiveness(of: sample.signals))
+                        )
+                        .interpolationMethod(.monotone)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .foregroundStyle(GamePalette.presentationExpressionAxisColor)
+                    }
+                    .chartYScale(domain: 0...1)
+                    .chartXScale(domain: sharedRange)
+                }
+            }
+
+            if !volumeTimeline.isEmpty {
+                timelineCard(
+                    title: "声の音量の推移",
+                    icon: "waveform",
+                    color: GamePalette.presentationVoiceAxisColor
+                ) {
+                    Chart(volumeTimeline) { sample in
+                        AreaMark(
+                            x: .value("時刻", sample.timestamp),
+                            y: .value("音量", sample.level)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    GamePalette.presentationVoiceAxisColor.opacity(0.3),
+                                    GamePalette.presentationVoiceAxisColor.opacity(0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        LineMark(
+                            x: .value("時刻", sample.timestamp),
+                            y: .value("音量", sample.level)
+                        )
+                        .interpolationMethod(.monotone)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .foregroundStyle(GamePalette.presentationVoiceAxisColor)
+                    }
+                    .chartYScale(domain: 0...1)
+                    .chartXScale(domain: sharedRange)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func timelineCard<Content: View>(
+        title: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder chart: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Label(title, systemImage: icon)
+                .font(Typography.footnote)
+                .fontWeight(.bold)
+                .foregroundStyle(color)
+
+            chart()
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+                        AxisGridLine().foregroundStyle(Color.secondary.opacity(0.15))
+                        AxisValueLabel(format: .dateTime.second())
+                            .font(Typography.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .chartYAxis(.hidden)
+                .frame(height: 100)
+        }
+        .padding(Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityHidden(true)
     }
 }
 
@@ -223,13 +410,46 @@ private struct NicknameEntrySheet: View {
 }
 
 #Preview {
-    PresentationResultView(
+    let start = Date().addingTimeInterval(-30)
+    let faceTimeline: [FaceSignalSample] = (0..<60).map { i in
+        let t = start.addingTimeInterval(Double(i) * 0.5)
+        let phase = Double(i) / 8
+        return FaceSignalSample(
+            timestamp: t,
+            signals: FaceSignals(
+                isFaceDetected: true,
+                smile: Float(0.4 + 0.35 * sin(phase)),
+                browRaise: Float(0.2 + 0.15 * sin(phase * 1.4)),
+                browFurrow: 0.05,
+                eyeOpenness: 0.9,
+                gazeHorizontal: 0,
+                gazeVertical: 0,
+                jawOpen: Float(max(0, 0.2 * sin(phase * 2))),
+                headYaw: 0, headPitch: 0, headRoll: 0
+            )
+        )
+    }
+    let volumeTimeline: [PresentationVolumeSample] = (0..<60).map { i in
+        let t = start.addingTimeInterval(Double(i) * 0.5)
+        let phase = Double(i) / 6
+        return PresentationVolumeSample(timestamp: t, level: Float(0.35 + 0.25 * sin(phase)))
+    }
+    return PresentationResultView(
         prompt: "このアプリの魅力を売り込んでください",
         result: PresentationScoreResult(
             content: PresentationAxisScore(score: 82, comment: "具体例を交えて説得力がありました"),
             voice: PresentationAxisScore(score: 74, comment: "間の取り方が自然でした"),
-            expression: PresentationAxisScore(score: 65, comment: "表情の変化がもう少しあると良いです")
+            expression: PresentationAxisScore(score: 65, comment: "表情の変化がもう少しあると良いです"),
+            contentFeedback: "アプリの操作感の良さに触れられていたのは良い点です。一方で、他アプリと比べた際の具体的な優位性（差別化ポイント）まで踏み込めるとさらに説得力が増します。",
+            recommendedStructure: [
+                "最初に結論（一番伝えたい魅力）を一言で述べる",
+                "その根拠となる具体的な機能やエピソードを1つ挙げる",
+                "他との違いが伝わる比較や数字を添える",
+                "最後にもう一度結論を繰り返して締める"
+            ]
         ),
+        faceTimeline: faceTimeline,
+        volumeTimeline: volumeTimeline,
         onPlayAgain: {},
         onRegister: { _ in },
         onShowLeaderboard: {}

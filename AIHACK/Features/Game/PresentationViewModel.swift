@@ -35,6 +35,10 @@ final class PresentationViewModel {
     private(set) var currentPrompt: String = ""
     private(set) var lastResult: PresentationScoreResult?
     private(set) var audioLevel: Float = 0
+    /// 本番中の表情の推移（結果画面のグラフ用）。約0.4秒間隔で間引いて記録する。
+    private(set) var faceTimeline: [FaceSignalSample] = []
+    /// 本番中の音量の推移（結果画面のグラフ用）。約0.4秒間隔で間引いて記録する。
+    private(set) var volumeTimeline: [PresentationVolumeSample] = []
 
     let isAPIKeyConfigured: Bool
     let leaderboard: Leaderboard
@@ -49,6 +53,10 @@ final class PresentationViewModel {
     private var faceTracker = PresentationFaceExpressivenessTracker()
     private var capturedTranscript = ""
     private var capturedVoiceSignals: VoiceSignals = .empty
+    private var lastFaceSampleAt: Date?
+    private var lastVolumeSampleAt: Date?
+    /// 表情・音量の推移を間引いて記録する最小間隔。密度が高すぎるとグラフが読みにくくなるため。
+    private static let timelineSampleInterval: TimeInterval = 0.4
 
     private var faceTrackingTask: Task<Void, Never>?
     private var voiceTask: Task<Void, Never>?
@@ -144,6 +152,10 @@ final class PresentationViewModel {
         capturedTranscript = ""
         capturedVoiceSignals = .empty
         audioLevel = 0
+        faceTimeline = []
+        volumeTimeline = []
+        lastFaceSampleAt = nil
+        lastVolumeSampleAt = nil
 
         faceTrackingTask = Task { [weak self] in await self?.consumeFaceSignalsForPresentation() }
         voiceTask = Task { [weak self] in await self?.consumeVoiceForPresentation() }
@@ -191,6 +203,12 @@ final class PresentationViewModel {
         for await signals in faceTrackingService.startTracking() {
             guard signals.isFaceDetected else { continue }
             faceTracker.consider(signals)
+
+            let now = Date()
+            if lastFaceSampleAt == nil || now.timeIntervalSince(lastFaceSampleAt!) >= Self.timelineSampleInterval {
+                faceTimeline.append(FaceSignalSample(timestamp: now, signals: signals))
+                lastFaceSampleAt = now
+            }
         }
     }
 
@@ -206,6 +224,11 @@ final class PresentationViewModel {
                     capturedVoiceSignals = signals
                 case .audioLevel(let level):
                     audioLevel = level
+                    let now = Date()
+                    if lastVolumeSampleAt == nil || now.timeIntervalSince(lastVolumeSampleAt!) >= Self.timelineSampleInterval {
+                        volumeTimeline.append(PresentationVolumeSample(timestamp: now, level: level))
+                        lastVolumeSampleAt = now
+                    }
                 }
             }
         } catch {

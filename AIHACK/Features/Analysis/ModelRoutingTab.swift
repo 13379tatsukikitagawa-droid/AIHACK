@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 // MARK: - タブ3: モデルルーティング
 
@@ -11,17 +12,8 @@ struct ModelRoutingTab: View {
         } else {
             List {
                 Section("モデル別呼び出し回数") {
-                    ForEach(aggregatedCounts, id: \.model) { entry in
-                        HStack {
-                            Text(entry.model)
-                                .font(Typography.subheadline)
-                            Spacer()
-                            Text("\(entry.count)回")
-                                .font(Typography.subheadline)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
+                    ModelCallCountChart(entries: aggregatedCounts)
+                        .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
                 }
 
                 if sessionLog.ttsCallCount > 0 {
@@ -65,9 +57,10 @@ struct ModelRoutingTab: View {
         )
     }
 
-    private struct ModelCount {
+    fileprivate struct ModelCount: Identifiable {
         let model: String
         let count: Int
+        var id: String { model }
     }
 
     private var aggregatedCounts: [ModelCount] {
@@ -80,6 +73,44 @@ struct ModelRoutingTab: View {
         }
         return counts.map { ModelCount(model: $0.key, count: $0.value) }
             .sorted { $0.count > $1.count }
+    }
+}
+
+/// モデル別の呼び出し回数を、多い順の水平バーチャートで表示する。単一系列（回数）の
+/// カテゴリ比較のため、色はブランドのグラフ用コーラル1色のみを使う。
+private struct ModelCallCountChart: View {
+    let entries: [ModelRoutingTab.ModelCount]
+
+    private var chartHeight: CGFloat {
+        CGFloat(entries.count) * 36 + Spacing.sm
+    }
+
+    var body: some View {
+        Chart(entries) { entry in
+            BarMark(
+                x: .value("回数", entry.count),
+                y: .value("モデル", entry.model)
+            )
+            .foregroundStyle(DataVizPalette.hero)
+            .cornerRadius(4)
+            .annotation(position: .trailing, alignment: .leading) {
+                Text("\(entry.count)回")
+                    .font(Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .monospacedDigit()
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisValueLabel()
+                    .font(Typography.caption)
+                    .foregroundStyle(Theme.Palette.textPrimary)
+            }
+        }
+        .frame(height: chartHeight)
+        .padding(.vertical, Spacing.xs)
+        .accessibilityLabel("モデル別呼び出し回数のグラフ")
     }
 }
 

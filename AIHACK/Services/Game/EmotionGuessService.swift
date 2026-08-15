@@ -46,13 +46,32 @@ nonisolated struct EmotionGuessService: EmotionGuessServiceProtocol {
             throw EmotionGuessError.unknownCardID
         }
 
-        return EmotionGuessResult(guessedCard: card, reasoning: response.reasoning)
+        // 未知のcardIDを含むスコアは無視し、既知の選択肢のみをグラフ表示用に残す。
+        var cardScores: [String: Int] = [:]
+        for entry in response.cardScores {
+            guard cards.contains(where: { $0.id == entry.cardID }) else { continue }
+            cardScores[entry.cardID] = min(max(entry.score, 0), 100)
+        }
+
+        return EmotionGuessResult(
+            guessedCard: card,
+            reasoning: response.reasoning,
+            keyObservations: Array(response.keyObservations.prefix(3)),
+            cardScores: cardScores
+        )
     }
 }
 
 nonisolated private struct EmotionGuessResponse: Decodable, Sendable {
     let cardID: String
     let reasoning: String
+    let keyObservations: [String]
+    let cardScores: [CardScore]
+
+    struct CardScore: Decodable, Sendable {
+        let cardID: String
+        let score: Int
+    }
 }
 
 nonisolated enum EmotionGuessError: Error, LocalizedError {

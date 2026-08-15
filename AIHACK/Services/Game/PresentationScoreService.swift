@@ -47,7 +47,9 @@ nonisolated struct PresentationScoreService: PresentationScoreServiceProtocol {
         return PresentationScoreResult(
             content: PresentationAxisScore(score: Self.clamp(response.content.score), comment: response.content.comment),
             voice: PresentationAxisScore(score: Self.clamp(response.voice.score), comment: response.voice.comment),
-            expression: PresentationAxisScore(score: Self.clamp(response.expression.score), comment: response.expression.comment)
+            expression: PresentationAxisScore(score: Self.clamp(response.expression.score), comment: response.expression.comment),
+            contentFeedback: response.contentFeedback,
+            recommendedStructure: response.recommendedStructure
         )
     }
 
@@ -65,4 +67,6 @@ nonisolated private struct PresentationScoreResponse: Decodable, Sendable {
     let content: Axis
     let voice: Axis
     let expression: Axis
+    let contentFeedback: String
+    let recommendedStructure: [String]
 }

@@ -18,6 +18,10 @@ nonisolated struct VoiceSignals: Sendable, Equatable {
     /// 声の高さの推移の近似値。基本周波数そのものではなく、フレームごとのゼロ交差率の
     /// 変動係数（標準偏差/平均）を、声の高さの変化の代理指標として扱う。
     var pitchVariationProxy: Float
+    /// 有声区間（自己相関で基本周波数を推定できたバッファ）の平均基本周波数（Hz）。
+    /// 推定できた区間が一つもなければ0。あくまで簡易的な時間領域推定であり、
+    /// 医療・音響分析用途の精度は想定しない。
+    var averagePitchHz: Float
 
     static let empty = VoiceSignals(
         speechRateCharactersPerSecond: 0,
@@ -26,6 +30,7 @@ nonisolated struct VoiceSignals: Sendable, Equatable {
         silenceSegmentCount: 0,
         averageSilenceDuration: 0,
         utteranceDuration: 0,
-        pitchVariationProxy: 0
+        pitchVariationProxy: 0,
+        averagePitchHz: 0
     )
 }

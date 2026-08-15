@@ -102,6 +102,7 @@ nonisolated enum VoiceSignalDescriber {
         var silenceDurationSum: Float = 0
         var utteranceDurationSum: Float = 0
         var pitchVariationSum: Float = 0
+        var pitchHzSum: Float = 0
 
         for sample in samples {
             let signals = sample.signals
@@ -112,6 +113,7 @@ nonisolated enum VoiceSignalDescriber {
             silenceDurationSum += signals.averageSilenceDuration
             utteranceDurationSum += signals.utteranceDuration
             pitchVariationSum += signals.pitchVariationProxy
+            pitchHzSum += signals.averagePitchHz
         }
 
         let count = Float(samples.count)
@@ -122,7 +124,8 @@ nonisolated enum VoiceSignalDescriber {
             silenceSegmentCount: Int((Float(silenceCountSum) / count).rounded()),
             averageSilenceDuration: silenceDurationSum / count,
             utteranceDuration: utteranceDurationSum / count,
-            pitchVariationProxy: pitchVariationSum / count
+            pitchVariationProxy: pitchVariationSum / count,
+            averagePitchHz: pitchHzSum / count
         )
     }
 
