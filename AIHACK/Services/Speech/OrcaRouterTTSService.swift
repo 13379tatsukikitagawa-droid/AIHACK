@@ -49,7 +49,7 @@ nonisolated final class OrcaRouterTTSService: NSObject, SpeechSynthesisServicePr
     private var playbackResumeContinuation: CheckedContinuation<Void, Never>?
     private var pulseTask: Task<Void, Never>?
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = SecureURLSession.shared) {
         self.session = session
         super.init()
     }
@@ -392,7 +392,7 @@ nonisolated final class OrcaRouterTTSService: NSObject, SpeechSynthesisServicePr
 
         guard 200..<300 ~= httpResponse.statusCode else {
             let bodyPreview = String(data: data, encoding: .utf8) ?? "(本文なし)"
-            Self.logger.error("TTS APIエラー: status=\(httpResponse.statusCode, privacy: .public) body=\(bodyPreview, privacy: .public)")
+            Self.logger.error("TTS APIエラー: status=\(httpResponse.statusCode, privacy: .public) body=\(bodyPreview, privacy: .private)")
             throw TTSError.apiError(statusCode: httpResponse.statusCode, message: bodyPreview)
         }
 
@@ -401,7 +401,7 @@ nonisolated final class OrcaRouterTTSService: NSObject, SpeechSynthesisServicePr
     }
 
     /// 設定画面の試聴専用。会話中のキュー・キャッシュとは独立した単発リクエスト。
-    static func fetchPreview(voice: TTSVoice, speed: Double, session: URLSession = .shared) async throws -> Data {
+    static func fetchPreview(voice: TTSVoice, speed: Double, session: URLSession = SecureURLSession.shared) async throws -> Data {
         try await performRequest(text: previewText, voice: voice, speed: speed, session: session)
     }
 }

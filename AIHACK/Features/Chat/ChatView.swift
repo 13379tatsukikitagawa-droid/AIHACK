@@ -8,7 +8,6 @@ private enum ChatDisplayMode {
 
 struct ChatView: View {
     @State private var viewModel = ChatViewModel()
-    @FocusState private var isInputFocused: Bool
     @State private var showingFaceDebug = false
     @State private var showingAnalysis = false
     @State private var showingSettings = false
@@ -32,19 +31,19 @@ struct ChatView: View {
                 gameEntryBanner
             }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: Spacing.sm) {
-                    handsFreeIndicator
-                    inputBar
-                }
-                .padding(.top, Spacing.sm)
-                .background(.bar)
+                inputBar
+                    .padding(.top, Spacing.sm)
+                    .background(.bar)
             }
             .background(calmBackground)
-            .navigationTitle("AIHACK")
+            .navigationTitle("フィーリン君")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     displayModeToggleButton
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    faceTrackingButton
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     moreMenu
@@ -85,6 +84,20 @@ struct ChatView: View {
         .fullScreenCover(isPresented: $showingGame) {
             GameView()
         }
+        .sheet(isPresented: crisisSupportPresented) {
+            CrisisSupportView(onDismiss: viewModel.dismissCrisisSupport)
+        }
+    }
+
+    /// crisisSupportTriggerの有無をBindingへ変換する。falseへ変化した場合
+    /// （スワイプで閉じられた場合を含む）は必ずviewModel側の状態も一緒にクリアする。
+    private var crisisSupportPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.crisisSupportTrigger != nil },
+            set: { isPresented in
+                if !isPresented { viewModel.dismissCrisisSupport() }
+            }
+        )
     }
 
     /// Mirrorの静かな世界観から意図的に区別された、ゲームコーナー（はぁって言うゲーム／
@@ -135,9 +148,9 @@ struct ChatView: View {
     }
 
     /// 主要な操作（マイク・音声/テキスト切り替え・送信）以外はすべてこの「その他」メニューに
-    /// 集約する。並び順は使用頻度の目安（メモ・仮説 → 履歴 → 設定）とし、最後に表情トラッキング
-    /// （確認用途で使用頻度が最も低い）を置く。Label(_:systemImage:)を使うことで、
-    /// 各項目のアイコン・ラベルの視覚的な重みが自動的に揃う。
+    /// 集約する。並び順は使用頻度の目安（メモ・仮説 → 履歴 → 設定）とする。表情トラッキングは
+    /// 独立した専用ボタン（faceTrackingButton）に切り出したためここには含めない。
+    /// Label(_:systemImage:)を使うことで、各項目のアイコン・ラベルの視覚的な重みが自動的に揃う。
     private var moreMenu: some View {
         Menu {
             Button {
@@ -162,16 +175,23 @@ struct ChatView: View {
             } label: {
                 Label("設定", systemImage: "gearshape")
             }
-            Button {
-                showingFaceDebug = true
-            } label: {
-                Label(cameraMenuLabel, systemImage: viewModel.isCameraActive ? "camera.fill" : "camera")
-            }
         } label: {
             Image(systemName: "ellipsis.circle")
         }
         .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
         .accessibilityLabel("その他のメニュー")
+    }
+
+    /// 表情トラッキングは会話中の確認頻度が高いため、「その他」メニューに埋もれさせず
+    /// 独立したツールバーボタンとして常時アクセスできるようにする。
+    private var faceTrackingButton: some View {
+        Button {
+            showingFaceDebug = true
+        } label: {
+            Image(systemName: viewModel.isCameraActive ? "camera.fill" : "camera")
+        }
+        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
+        .accessibilityLabel(cameraMenuLabel)
     }
 
     private var memoryMenuLabel: String {
@@ -298,7 +318,7 @@ struct ChatView: View {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text("APIキーが未設定です")
                     .font(Typography.headline)
-                Text("Configuration/Secrets.swift に OrcaRouter の APIキーを設定してください。手順は README.md を参照してください。")
+                Text("OrcaRouterのAPIキーが読み込めていません。Xcodeの実行スキームに環境変数 ORCA_ROUTER_API_KEY を設定するか、Configuration/Secrets.xcconfig.example を参考に配布用の設定を行ってください。")
                     .font(Typography.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -382,7 +402,7 @@ struct ChatView: View {
     }
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: Spacing.sm) {
+        HStack(alignment: .center, spacing: Spacing.sm) {
             MicButton(
                 state: viewModel.conversationState,
                 audioLevel: viewModel.audioLevel,
@@ -391,95 +411,24 @@ struct ChatView: View {
                 action: viewModel.toggleListening
             )
 
-            messageInputField
-
-            actionButton
+            if viewModel.isGenerating {
+                stopGeneratingButton
+            }
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
     }
 
-    /// ハンズフリー会話セッションが有効な間、listening以外の状態でも常に表示する。
-    /// プライバシーに関わるため、マイクが自動的に再起動されうることを曖昧にしない。
-    @ViewBuilder
-    private var handsFreeIndicator: some View {
-        if viewModel.isHandsFreeActive {
-            HStack(spacing: Spacing.xs) {
-                Image(systemName: "person.wave.2.fill")
-                Text("ハンズフリー会話中（マイクボタンで終了）")
-            }
-            .font(Typography.caption)
-            .fontWeight(Theme.Weight.emphasis)
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, Spacing.md)
-            .padding(.vertical, Spacing.xs)
-            .background(Color.orange, in: Capsule())
-            .padding(.horizontal, Spacing.lg)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("ハンズフリー会話中です。マイクボタンで終了できます。")
+    private var stopGeneratingButton: some View {
+        Button(role: .destructive) {
+            viewModel.stop()
+        } label: {
+            Image(systemName: "stop.circle.fill")
+                .font(Typography.title2)
+                .symbolRenderingMode(.hierarchical)
         }
-    }
-
-    @ViewBuilder
-    private var messageInputField: some View {
-        if viewModel.conversationState == .listening {
-            liveTranscriptView
-        } else {
-            TextField("メッセージを入力", text: $viewModel.inputText, axis: .vertical)
-                .font(Typography.body)
-                .lineLimit(1...5)
-                .padding(.horizontal, Spacing.md)
-                .padding(.vertical, Spacing.sm)
-                .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
-                .disabled(!viewModel.isInputEnabled)
-                .focused($isInputFocused)
-                .onSubmit(sendIfPossible)
-        }
-    }
-
-    private var liveTranscriptView: some View {
-        HStack {
-            Text(viewModel.liveTranscript.isEmpty ? "聞き取り中…" : viewModel.liveTranscript)
-                .font(Typography.body)
-                .foregroundStyle(viewModel.liveTranscript.isEmpty ? Color.secondary : Color.primary.opacity(0.6))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(3)
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm)
-        .frame(minHeight: Layout.minTapTarget)
-        .background(Theme.Palette.surface, in: Theme.Radius.shape(Theme.Radius.medium))
-        .accessibilityLabel("認識中のテキスト")
-        .accessibilityValue(viewModel.liveTranscript.isEmpty ? "まだ発話がありません" : viewModel.liveTranscript)
-    }
-
-    @ViewBuilder
-    private var actionButton: some View {
-        if viewModel.isGenerating {
-            Button(role: .destructive) {
-                viewModel.stop()
-            } label: {
-                Image(systemName: "stop.circle.fill")
-                    .font(Typography.title2)
-                    .symbolRenderingMode(.hierarchical)
-            }
-            .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-            .accessibilityLabel("生成を中断")
-        } else {
-            Button(action: sendIfPossible) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(Typography.title2)
-                    .symbolRenderingMode(.hierarchical)
-            }
-            .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
-            .disabled(!viewModel.canSend)
-            .accessibilityLabel("送信")
-        }
-    }
-
-    private func sendIfPossible() {
-        guard viewModel.canSend else { return }
-        viewModel.send()
+        .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
+        .accessibilityLabel("生成を中断")
     }
 }
 

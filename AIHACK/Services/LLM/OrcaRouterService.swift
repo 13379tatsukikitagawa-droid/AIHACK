@@ -14,7 +14,7 @@ actor OrcaRouterService: LLMServiceProtocol {
     private let session: URLSession
     private var retryContinuation: AsyncStream<LLMRetryEvent>.Continuation?
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = SecureURLSession.shared) {
         self.session = session
     }
 
@@ -166,7 +166,7 @@ actor OrcaRouterService: LLMServiceProtocol {
         guard 200..<300 ~= httpResponse.statusCode else {
             let errorData = try? await Self.collectBody(from: bytes)
             let bodyPreview = errorData.flatMap { String(data: $0, encoding: .utf8) } ?? "(本文なし)"
-            Self.logger.error("APIエラー(ストリーミング): status=\(httpResponse.statusCode, privacy: .public) body=\(bodyPreview, privacy: .public)")
+            Self.logger.error("APIエラー(ストリーミング): status=\(httpResponse.statusCode, privacy: .public) body=\(bodyPreview, privacy: .private)")
             let message = Self.extractErrorMessage(from: errorData) ?? "サーバーエラーが発生しました。"
             if httpResponse.statusCode == 401 {
                 throw LLMError.unauthorized
@@ -187,7 +187,7 @@ actor OrcaRouterService: LLMServiceProtocol {
 
                 guard let chunk = try? JSONDecoder().decode(ChatCompletionChunk.self, from: data) else {
                     // 不正なチャンクは無視し、ストリーム全体は継続するが、内容はログに残す
-                    Self.logger.error("SSEチャンクのデコードに失敗: \(payload, privacy: .public)")
+                    Self.logger.error("SSEチャンクのデコードに失敗: \(payload, privacy: .private)")
                     continue
                 }
 
@@ -298,7 +298,7 @@ actor OrcaRouterService: LLMServiceProtocol {
 
         guard 200..<300 ~= httpResponse.statusCode else {
             let bodyPreview = String(data: data, encoding: .utf8) ?? "(本文なし)"
-            Self.logger.error("APIエラー(構造化応答): status=\(httpResponse.statusCode, privacy: .public) body=\(bodyPreview, privacy: .public)")
+            Self.logger.error("APIエラー(構造化応答): status=\(httpResponse.statusCode, privacy: .public) body=\(bodyPreview, privacy: .private)")
             let message = Self.extractErrorMessage(from: data) ?? "サーバーエラーが発生しました。"
             if httpResponse.statusCode == 401 {
                 throw LLMError.unauthorized
@@ -311,7 +311,7 @@ actor OrcaRouterService: LLMServiceProtocol {
             completion = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
         } catch {
             let bodyPreview = String(data: data, encoding: .utf8) ?? "(本文なし)"
-            Self.logger.error("構造化応答のデコードに失敗: \(error.localizedDescription, privacy: .public) body=\(bodyPreview, privacy: .public)")
+            Self.logger.error("構造化応答のデコードに失敗: \(error.localizedDescription, privacy: .public) body=\(bodyPreview, privacy: .private)")
             throw LLMError.decoding(error.localizedDescription)
         }
 
@@ -328,7 +328,7 @@ actor OrcaRouterService: LLMServiceProtocol {
             let decoded = try JSONDecoder().decode(T.self, from: contentData)
             return .success(decoded)
         } catch {
-            Self.logger.error("応答のデコードに失敗: \(error.localizedDescription, privacy: .public) content=\(content, privacy: .public)")
+            Self.logger.error("応答のデコードに失敗: \(error.localizedDescription, privacy: .public) content=\(content, privacy: .private)")
             throw LLMError.decoding(error.localizedDescription)
         }
     }

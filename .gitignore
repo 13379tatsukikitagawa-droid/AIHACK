@@ -21,6 +21,7 @@ Pods/
 
 # App secrets
 AIHACK/Configuration/Secrets.swift
+AIHACK/Configuration/Secrets.xcconfig
 
 # Claude Code worktrees
 .claude/

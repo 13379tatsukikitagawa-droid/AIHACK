@@ -15,6 +15,9 @@ final class ChatViewModel {
     private(set) var errorMessage: String?
     /// 429（レート制限）による自動リトライの状況。ユーザーへ「待たされている理由」を明示するために使う。
     private(set) var retryNotice: String?
+    /// 送信前の安全フィルターが自傷・希死念慮などの危機的表現を検知した際にセットされる。
+    /// 非nilの間はLLMへ何も送信せず、UIは相談窓口画面を表示する。
+    private(set) var crisisSupportTrigger: CrisisSafetyFilter.Match?
 
     private(set) var liveTranscript: String = ""
     private(set) var audioLevel: Float = 0
@@ -246,6 +249,13 @@ final class ChatViewModel {
         setConversationState(.error)
     }
 
+    // MARK: - 安全フィルター
+
+    /// 相談窓口画面を閉じる。入力欄の内容はユーザーの判断に委ね、ここでは消去しない。
+    func dismissCrisisSupport() {
+        crisisSupportTrigger = nil
+    }
+
     // MARK: - テキスト送信（Step 1）
 
     func send() {
@@ -262,6 +272,14 @@ final class ChatViewModel {
         guard !trimmed.isEmpty,
               conversationState == .idle || conversationState == .error || conversationState == .listening,
               isAPIKeyConfigured else { return }
+
+        // 危機的表現を検知した場合はLLMへ一切送信せず、相談窓口の案内へ差し替える。
+        // ここでの判定は完全に端末内で完結し、ネットワーク通信は発生しない。
+        if let match = CrisisSafetyFilter.evaluate(trimmed) {
+            Self.logger.notice("安全フィルターが危機的表現を検知したため送信を中止しました")
+            crisisSupportTrigger = match
+            return
+        }
 
         errorMessage = nil
         retryNotice = nil

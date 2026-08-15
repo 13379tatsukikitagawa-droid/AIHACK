@@ -12,6 +12,7 @@ struct AIHACKApp: App {
     var body: some Scene {
         WindowGroup {
             ChatView()
+                .overlay(NeonScreenBorder())
         }
     }
 }
