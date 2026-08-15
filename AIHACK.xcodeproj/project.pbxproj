@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		A315CE09302A1B2000432037 /* AIHACK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIHACK.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC0834ACA3BC788020E88E97 /* AIHACK/Configuration/Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AIHACK/Configuration/Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +35,7 @@
 			children = (
 				A315CE0B302A1B2000432037 /* AIHACK */,
 				A315CE0A302A1B2000432037 /* Products */,
+				AC0834ACA3BC788020E88E97 /* AIHACK/Configuration/Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -243,6 +245,7 @@
 		};
 		A315CE17302A1B2200432037 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AC0834ACA3BC788020E88E97 /* AIHACK/Configuration/Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -254,11 +257,11 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BuildSupport/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "フィーリン君";
 				INFOPLIST_KEY_NSCameraUsageDescription = "AIとの対話中、あなたの表情（笑顔・視線・頭の動きなど）を認識してリアクションに活かすためにカメラを使用します。映像そのものは保存も外部送信もされず、数値化された特徴量のみをその場で一時的に使用します。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AIと音声で会話するために、あなたの発話をマイクで取得します。取得した音声データはアプリ内に保存されず、テキスト変換（音声認識）の処理後に破棄されます。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "話しかけた内容をテキストに変換してAIとの会話に使うために、音声認識機能を使用します。音声は端末内、または端末が対応していない場合のみAppleの音声認識サーバーで処理され、変換後のテキストのみが会話に使用されます。";
-				INFOPLIST_KEY_OrcaRouterAPIKey = "$(ORCA_ROUTER_API_KEY)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -290,6 +293,7 @@
 		};
 		A315CE18302A1B2200432037 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AC0834ACA3BC788020E88E97 /* AIHACK/Configuration/Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -301,11 +305,11 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BuildSupport/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "フィーリン君";
 				INFOPLIST_KEY_NSCameraUsageDescription = "AIとの対話中、あなたの表情（笑顔・視線・頭の動きなど）を認識してリアクションに活かすためにカメラを使用します。映像そのものは保存も外部送信もされず、数値化された特徴量のみをその場で一時的に使用します。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AIと音声で会話するために、あなたの発話をマイクで取得します。取得した音声データはアプリ内に保存されず、テキスト変換（音声認識）の処理後に破棄されます。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "話しかけた内容をテキストに変換してAIとの会話に使うために、音声認識機能を使用します。音声は端末内、または端末が対応していない場合のみAppleの音声認識サーバーで処理され、変換後のテキストのみが会話に使用されます。";
-				INFOPLIST_KEY_OrcaRouterAPIKey = "$(ORCA_ROUTER_API_KEY)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
